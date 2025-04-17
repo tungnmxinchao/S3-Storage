@@ -3,6 +3,7 @@ using Amazon.S3;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Amazon.S3.Model;
+using System.Runtime;
 
 namespace S3Storage.Controllers
 {
@@ -10,13 +11,16 @@ namespace S3Storage.Controllers
     [ApiController]
     public class StorageController : ControllerBase
     {
-        private const string AccessKey = "xxx";
-        private const string SecretKey = "yyy";
-        private const string BucketName = "my-asp-bucket";
-        private const string ServiceUrl = "https://s3.cloudfly.vn";
+        private readonly IAmazonS3 _s3Client;
+        private readonly S3Settings _settings;
 
-        [HttpPost]
-        [Route("image")]
+        public StorageController(IAmazonS3 s3Client, S3Settings settings)
+        {
+            _s3Client = s3Client;
+            _settings = settings;
+        }
+
+        [HttpPost("image")]
         public async Task<IActionResult> UploadImage(IFormFile file)
         {
             if (file == null || file.Length == 0)
@@ -24,14 +28,6 @@ namespace S3Storage.Controllers
 
             try
             {
-                var config = new AmazonS3Config
-                {
-                    ServiceURL = ServiceUrl,
-                    ForcePathStyle = true,
-                    SignatureVersion = "2"
-                };
-
-                var client = new AmazonS3Client(AccessKey, SecretKey, config);
                 var fileName = Guid.NewGuid() + Path.GetExtension(file.FileName);
 
                 using var stream = file.OpenReadStream();
@@ -39,15 +35,15 @@ namespace S3Storage.Controllers
                 {
                     InputStream = stream,
                     Key = fileName,
-                    BucketName = BucketName,
+                    BucketName = _settings.BucketName,
                     ContentType = file.ContentType,
                     CannedACL = S3CannedACL.PublicRead
                 };
 
-                var transferUtility = new TransferUtility(client);
+                var transferUtility = new TransferUtility(_s3Client);
                 await transferUtility.UploadAsync(uploadRequest);
 
-                var fileUrl = $"{ServiceUrl}/{BucketName}/{fileName}";
+                var fileUrl = $"{_settings.Endpoint}/{_settings.BucketName}/{fileName}";
                 return Ok(new { Url = fileUrl });
             }
             catch (Exception ex)
@@ -55,8 +51,5 @@ namespace S3Storage.Controllers
                 return StatusCode(500, $"Error uploading to CloudFly S3: {ex.Message}");
             }
         }
-
-
-
     }
 }
